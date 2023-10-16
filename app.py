@@ -1,99 +1,70 @@
-import dash
-from dash import dcc
-from dash import html
-from datetime import date
-from dash.dependencies import Input, Output, State
+# pylint: disable=unused-variable
+# pylint: disable=anomalous-backslash-in-string
+
+'''
+app.py: Frontend runner file for nCovid_19 Streamlit application
+
+Dependencies
+data: data/time_series_covid19_infections.csv, data/time_series_covid19_vaccines.csv
+modules:
+frontend.py: Front-end works
+generic.py: Load necessary files (infections, map)
+'''
+
+import streamlit as st
 import pandas as pd
-import pandas_datareader.data as web
-import plotly.graph_objs as go
-import datetime as dt
+import generic
+import frontend
+import pydeck as pdk
+import math
 
-app = dash.Dash()
 
-comp_df = pd.read_csv('NASDAQcompanylist.csv')
+file_dict = {'infections':'https://github.com/staedi/nCOV-summary/raw/master/time_series_covid19_infections.csv','vaccines':'https://github.com/staedi/nCOV-summary/raw/master/time_series_covid19_vaccines.csv'}
+filename = 'https://github.com/staedi/nCOV-summary/raw/master/time_series_covid19_infections.csv'
 
-ticker_lst = comp_df['Symbol']
-comp_lst = comp_df['Name']
+################################################################
+# Header and preprocessing
 
-start = dt.datetime(2010, 1, 29)
-end = dt.datetime.today()
-df = web.DataReader('AAP', 'stooq', start, end)
+# Set Title
+st.title('nCOV-19 Status (Infections, Vaccinations)')
 
-tick_comp_lst = [ticker_lst[x] + " " + comp_lst[x] for x in range(len(comp_df))]
+# Initial data load
+# update_status = st.markdown("Loading infections data...")
+data = generic.read_dataset(file_dict)
+# update_status.markdown('Load complete!')
 
-app.layout = html.Div([
-    html.H1("Stock Dashboard"),
-    html.H3("Enter Stock Name: "),
-    dcc.Dropdown(
-        ticker_lst,
-        ['AAP'],
-        multi=True,
-                id = 'selected-company'
-                ),
-    dcc.DatePickerRange(
-        id='my-date-picker-range',
-        min_date_allowed=date(2019, 9, 10),
-        max_date_allowed=dt.datetime.today(),
-        initial_visible_month=date(2019, 9, 10),
-        end_date=dt.datetime.today()
-    ),
-    html.Button(
-        id='submit-button',
-        n_clicks=0,
-        children='Submit',
-        style={'fontSize':28}
-    ),
+################################################################
+# Sidebar section (Only multi-states country can be chosen)
+sel_region, sel_country, chosen_stat, sel_map = frontend.display_sidebar(data)
 
-    dcc.Graph(id = 'final-graph',
-              figure = {'data':[go.Scatter(
-                x= df.index,
-                y= df['Close'],
-                text='AAP',
-                mode='lines',
-            )],
-               'layout':go.Layout(
-                title = 'Stock Graph',
-                hovermode='closest'
-            )
-             })
+################################################################
+# Main section
+# update_status.markdown("Finding top districts...")
+cand = generic.set_candidates(data,sel_region,sel_country,chosen_stat)
 
-])
-@app.callback(
-    Output('final-graph', 'figure'),
-    [Input('submit-button', 'n_clicks')],
-    [State('selected-company', 'value'),
-     State('my-date-picker-range', 'start_date'),
-     State('my-date-picker-range', 'end_date')])
 
-def update_graph(n_clicks, value, start_date, end_date):
-   
-    start = dt.datetime.strptime(start_date[:10], '%Y-%m-%d')
-    end = dt.datetime.strptime(end_date[:10], '%Y-%m-%d')
+# update_status.markdown("Calculation complete!")
+#
+# update_status.markdown("Drawing charts")
+# if sel_map:
+#     update_status.markdown("Drawing charts & maps...")
+# else:
+#     update_status.markdown("Drawing charts...")
+frontend.show_stats(data,sel_region,sel_country,chosen_stat,cand,sel_map)
+# update_status.markdown("Job Complete!")
 
-    data = []
-    for val in value:
+# Caption for credits
+st.subheader('Credits')
+infections = f'\n* Global and US: Johns Hopkins University CSSE GitHub'
+infections += f'\n* South Korea: South Korean CDC'
 
-        df = web.DataReader(val, 'stooq', start=start, end=end)
-        trace = go.Scatter(
-                x= df.index,
-                y= df['Close'],
-                text=val,
-                mode='lines',
-                name = val
-            )
-        data.append(trace)
-        
-    fig =  {
-            'data': data,
-            'layout': go.Layout(
-                title = 'Stock Graph'
-            )
-        }
-    return fig
+# vaccinations = f'\n* Global and US: Johns Hopkins University GoVex GitHub'
+# vaccinations += f'\n* South Korea: South Korean CDC'
+# vaccinations += f'\n* Australia: COVID Live'
+# vaccinations += f'\n* Canada: COVID-19 Tracker Project'
+# vaccinations += f'\n* UK: Public Health England'
 
-from datetime import datetime
-datetime.strptime('2019-09-28'[:10], '%Y-%m-%d')
-
-if __name__ == '__main__':
-    app.run_server()
-
+st.write('Infections data source ' + infections)
+# st.write('Vaccinations data source ' + vaccinations)
+st.write('Map shapedata: Natural Earth')
+st.write('Map provider: Carto')
