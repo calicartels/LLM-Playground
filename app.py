@@ -1,179 +1,156 @@
-import yfinance as yf
 import streamlit as st
-import datetime 
-import matplotlib.pyplot as plt
-import talib 
-import ta
-import numpy as np
-import matplotlib.ticker as mticker
-import pandas as pd
-import requests
-yf.pdr_override()
+from finance import PersonalFinance
+import markdown as md
+df = PersonalFinance()
+ 
+PAGE_CONFIG = {"page_title":"Personal Finance", 
+            #    "page_icon":image, 
+               "layout":"centered", 
+               "initial_sidebar_state":"auto"}
 
-st.write("""
-# Technical Analysis Web Application
-Shown below are the **Moving Average Crossovers**, **Bollinger Bands**, **MACD's**, **Commodity Channel Indexes**, **Relative Strength Indexes** and **Extended Market Calculators** of any stock!
-""")
+st.set_page_config(**PAGE_CONFIG)
 
-st.sidebar.header('User Input Parameters')
+st.sidebar.markdown("## Controls")
+# sidebar_main = st.sidebar.selectbox('Navigation', ['About the Project', 'EDA', 'Predictions', 'Q&A'])
+sidebar_main = st.sidebar.selectbox('Navigation', ['Home', 'EDA', 'Q&A', 'About the Project'])
+ 
+if sidebar_main == 'Home' : 
+    st.title('Personal Finance Dashboard')
+    st.markdown("""
+        ##### Since when I moved to Bangalore I've been monitoring my expenses and this is my dashboard 
+    """)
+    
+    # * unable to use direct images due to library issue 
+    # st.image('static/compressed_heroimage.gif', caption = 'Personal Finance')
+    banner = md.headerSection()
+    st.markdown(banner,unsafe_allow_html=True)
+    
+    st.markdown("""
+    ###### The dataset looks some what like this 
+    """)
+    st.dataframe(df.read_data('primary').tail())
+ 
+elif sidebar_main == 'EDA' : 
+    st.title('Expense dashboard')
+    sidebar_sub = st.sidebar.radio('Navigation', ['Expense', 'Category', 'boxplot', 'total expenses', 'treemap'])
+    
+    data = df.preprocess_dataframe().tail()
 
-today = datetime.date.today()
-def user_input_features():
-    ticker = st.sidebar.text_input("Ticker", 'AAPL')
-    start_date = st.sidebar.text_input("Start Date", '2019-01-01')
-    end_date = st.sidebar.text_input("End Date", f'{today}')
-    return ticker, start_date, end_date
+    st.markdown(
+            """
+            ##### After preprocessing the data looks like this
+            """
+        )
+    st.dataframe(data.head())
+    if sidebar_sub == 'Expense' : 
 
-symbol, start, end = user_input_features()
+        st.markdown(
+            """
+            ##### Check the expenses 
+            """
+        ) 
+        
+        col1, col2 = st.columns(2)
+        with col1 : 
+            daily = st.button('Daily') 
 
-def get_symbol(symbol):
-    url = "http://d.yimg.com/autoc.finance.yahoo.com/autoc?query={}&region=1&lang=en".format(symbol)
-    result = requests.get(url).json()
-    for x in result['ResultSet']['Result']:
-        if x['symbol'] == symbol:
-            return x['name']
-company_name = get_symbol(symbol.upper())
+        with col2 :  
+            monthly = st.button('Monthly')
+        
+        if monthly : 
+            st.plotly_chart(df.plot_expenses('month')[0])
+            # st.dataframe(df.plot_expenses('month')[2])
+            percent = df.plot_expenses('month')[1]
 
-start = pd.to_datetime(start)
-end = pd.to_datetime(end)
+            if percent > 0 : 
+                st.write('which is ',percent,'%',' higher than prev month')
+            else : 
+                st.write('which is ',abs(percent),'%',' lower than prev month')
 
-# Read data 
-data = yf.download(symbol,start,end)
+        else : 
+            st.plotly_chart(df.plot_expenses('date'))
 
-# Adjusted Close Price
-st.header(f"""
-          Adjusted Close Price\n {company_name}
-          """)
-st.line_chart(data['Adj Close'])
+    elif sidebar_sub == 'Category' :
+        st.markdown(
+            """
+            ##### Category wise expenses 
+            """
+        ) 
+        st.plotly_chart(df.share_of_category())
 
-# ## SMA and EMA
-#Simple Moving Average
-data['SMA'] = talib.SMA(data['Adj Close'], timeperiod = 20)
+    elif sidebar_sub == 'boxplot' : 
+        st.markdown(
+            """
+            ##### Category wise boxplot 
+            """
+        ) 
+        col1, col2, col3 = st.columns(3)
+        with col1 : 
+            food = st.button('food') 
 
-# Exponential Moving Average
-data['EMA'] = talib.EMA(data['Adj Close'], timeperiod = 20)
+        with col2 :  
+            travel = st.button('travel')
+        
+        with col3 :  
+            wants = st.button('wants')
 
-# Plot
-st.header(f"""
-          Simple Moving Average vs. Exponential Moving Average\n {company_name}
-          """)
-st.line_chart(data[['Adj Close','SMA','EMA']])
+        if travel :
+            st.plotly_chart(df.plot_boxplot('travel'))
+        if wants :
+            st.plotly_chart(df.plot_boxplot('wants'))
+        else: 
+            st.plotly_chart(df.plot_boxplot('food'))
 
-# Bollinger Bands
-data['upper_band'], data['middle_band'], data['lower_band'] = talib.BBANDS(data['Adj Close'], timeperiod =20)
+    elif sidebar_sub == 'total expenses' : 
+        st.markdown(
+            """
+            ##### Total Expenses 
+            """
+        ) 
+        st.plotly_chart(df.total_spending()[0])
+        st.write('Total amount spent is ',df.total_spending()[1])
 
-# Plot
-st.header(f"""
-          Bollinger Bands\n {company_name}
-          """)
-st.line_chart(data[['Adj Close','upper_band','middle_band','lower_band']])
+    else : 
+        st.markdown(
+            """
+            ##### Spending on items 
+            """
+        ) 
+        st.plotly_chart(df.plot_treemap())
 
-# ## MACD (Moving Average Convergence Divergence)
-# MACD
-data['macd'], data['macdsignal'], data['macdhist'] = talib.MACD(data['Adj Close'], fastperiod=12, slowperiod=26, signalperiod=9)
+elif sidebar_main == 'About the Project' : 
+    st.markdown(
+            md.aboutpage()
+        ) 
 
-# Plot
-st.header(f"""
-          Moving Average Convergence Divergence\n {company_name}
-          """)
-st.line_chart(data[['macd','macdsignal']])
+else : 
+    # dropdown
+    col1, col2 = st.columns(2)
+    with col1 :
+        st.write('Max amount spent on food :')
+    with col2 :
+        check = st.button('check', key = 1)
+    
+    if check : 
+        st.write('I ate ', df.find_max('food')[0], ' on ', df.find_max('food')[2].date(), ' with ', df.find_max('food')[1])
+    
+    col1, col2 = st.columns(2)
+    with col1 :
+        st.write('Max amount spent on travel :')
+    with col2 :
+        check = st.button('check', key = 2)
+    
+    if check : 
+        st.write('I used ', df.find_max('travel')[0], ' on ', df.find_max('travel')[2].date(), ' for ', df.find_max('travel')[1])
 
-## CCI (Commodity Channel Index)
-# CCI
-cci = ta.trend.cci(data['High'], data['Low'], data['Close'], n=31, c=0.015)
+    col1, col2 = st.columns(2)
+    with col1 :
+        st.write('Max amount spent on wants :')
+    with col2 :
+        check = st.button('check', key = 3)
+    
+    if check : 
+        st.write('I have spent on ', df.find_max('wants')[0], ' on ', df.find_max('wants')[2].date(), ' for ', df.find_max('wants')[1])
 
-# Plot
-st.header(f"""
-          Commodity Channel Index\n {company_name}
-          """)
-st.line_chart(cci)
-
-# ## RSI (Relative Strength Index)
-# RSI
-data['RSI'] = talib.RSI(data['Adj Close'], timeperiod=14)
-
-# Plot
-st.header(f"""
-          Relative Strength Index\n {company_name}
-          """)
-st.line_chart(data['RSI'])
-
-# ## OBV (On Balance Volume)
-# OBV
-data['OBV'] = talib.OBV(data['Adj Close'], data['Volume'])/10**6
-
-# Plot
-st.header(f"""
-          On Balance Volume\n {company_name}
-          """)
-st.line_chart(data['OBV'])
-
-# Extended Market
-fig, ax1 = plt.subplots() 
-
-#Asks for stock ticker
-sma = 50
-limit = 10
-
-data = yf.download(symbol,start, today)
-
-#calculates sma and creates a column in the dataframe
-data['SMA'+str(sma)] = data.iloc[:,4].rolling(window=sma).mean() 
-data['PC'] = ((data["Adj Close"]/data['SMA'+str(sma)])-1)*100
-
-mean = round(data["PC"].mean(), 2)
-stdev = round(data["PC"].std(), 2)
-current= round(data["PC"][-1], 2)
-yday= round(data["PC"][-2], 2)
-
-stats = [['Mean', mean], ['Standard Deviation', stdev], ['Current', current], ['Yesterday', yday]]
-
-frame = pd.DataFrame(stats,
-                   columns = ['Statistic', 'Value'])
-
-st.header(f"""
-          Extended Market Calculator\n {company_name}
-          """)
-st.dataframe(frame.style.hide_index())
-
-# fixed bin size
-bins = np.arange(-100, 100, 1) 
-plt.rcParams['figure.figsize'] = 15, 10
-plt.xlim([data["PC"].min()-5, data["PC"].max()+5])
-
-plt.hist(data["PC"], bins=bins, alpha=0.5)
-plt.title(symbol+"-- % From "+str(sma)+" SMA Histogram since "+str(start.year))
-plt.xlabel('Percent from '+str(sma)+' SMA (bin size = 1)')
-plt.ylabel('Count')
-
-plt.axvline( x=mean, ymin=0, ymax=1, color='k', linestyle='--')
-plt.axvline( x=stdev+mean, ymin=0, ymax=1, color='gray', alpha=1, linestyle='--')
-plt.axvline( x=2*stdev+mean, ymin=0, ymax=1, color='gray',alpha=.75, linestyle='--')
-plt.axvline( x=3*stdev+mean, ymin=0, ymax=1, color='gray', alpha=.5, linestyle='--')
-plt.axvline( x=-stdev+mean, ymin=0, ymax=1, color='gray', alpha=1, linestyle='--')
-plt.axvline( x=-2*stdev+mean, ymin=0, ymax=1, color='gray',alpha=.75, linestyle='--')
-plt.axvline( x=-3*stdev+mean, ymin=0, ymax=1, color='gray', alpha=.5, linestyle='--')
-
-plt.axvline( x=current, ymin=0, ymax=1, color='r', label = 'today')
-plt.axvline( x=yday, ymin=0, ymax=1, color='blue', label = 'yesterday')
-
-#add more x axis labels
-ax1.xaxis.set_major_locator(mticker.MaxNLocator(14)) 
-
-st.pyplot(fig)
-
-#Create Plots
-fig2, ax2 = plt.subplots() 
-
-data=data[-150:]
-
-data['PC'].plot(label='close',color='k')
-plt.title(symbol+"-- % From "+str(sma)+" SMA Over last 100 days")
-plt.xlabel('Date') 
-plt.ylabel('Percent from '+str(sma)+' EMA')
-
-#add more x axis labels
-ax2.xaxis.set_major_locator(mticker.MaxNLocator(8)) 
-plt.axhline( y=limit, xmin=0, xmax=1, color='r')
-plt.rcParams['figure.figsize'] = 15, 10
-st.pyplot(fig2)
+footer = md.footerSection()
+st.markdown(footer,unsafe_allow_html=True) 
