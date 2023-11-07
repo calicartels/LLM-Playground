@@ -1,156 +1,99 @@
-import streamlit as st
-from finance import PersonalFinance
-import markdown as md
-df = PersonalFinance()
- 
-PAGE_CONFIG = {"page_title":"Personal Finance", 
-            #    "page_icon":image, 
-               "layout":"centered", 
-               "initial_sidebar_state":"auto"}
+import dash
+from dash import dcc
+from dash import html
+from datetime import date
+from dash.dependencies import Input, Output, State
+import pandas as pd
+import pandas_datareader.data as web
+import plotly.graph_objs as go
+import datetime as dt
 
-st.set_page_config(**PAGE_CONFIG)
+app = dash.Dash()
 
-st.sidebar.markdown("## Controls")
-# sidebar_main = st.sidebar.selectbox('Navigation', ['About the Project', 'EDA', 'Predictions', 'Q&A'])
-sidebar_main = st.sidebar.selectbox('Navigation', ['Home', 'EDA', 'Q&A', 'About the Project'])
- 
-if sidebar_main == 'Home' : 
-    st.title('Personal Finance Dashboard')
-    st.markdown("""
-        ##### Since when I moved to Bangalore I've been monitoring my expenses and this is my dashboard 
-    """)
-    
-    # * unable to use direct images due to library issue 
-    # st.image('static/compressed_heroimage.gif', caption = 'Personal Finance')
-    banner = md.headerSection()
-    st.markdown(banner,unsafe_allow_html=True)
-    
-    st.markdown("""
-    ###### The dataset looks some what like this 
-    """)
-    st.dataframe(df.read_data('primary').tail())
- 
-elif sidebar_main == 'EDA' : 
-    st.title('Expense dashboard')
-    sidebar_sub = st.sidebar.radio('Navigation', ['Expense', 'Category', 'boxplot', 'total expenses', 'treemap'])
-    
-    data = df.preprocess_dataframe().tail()
+comp_df = pd.read_csv('NASDAQcompanylist.csv')
 
-    st.markdown(
-            """
-            ##### After preprocessing the data looks like this
-            """
-        )
-    st.dataframe(data.head())
-    if sidebar_sub == 'Expense' : 
+ticker_lst = comp_df['Symbol']
+comp_lst = comp_df['Name']
 
-        st.markdown(
-            """
-            ##### Check the expenses 
-            """
-        ) 
+start = dt.datetime(2010, 1, 29)
+end = dt.datetime.today()
+df = web.DataReader('AAP', 'stooq', start, end)
+
+tick_comp_lst = [ticker_lst[x] + " " + comp_lst[x] for x in range(len(comp_df))]
+
+app.layout = html.Div([
+    html.H1("Stock Dashboard"),
+    html.H3("Enter Stock Name: "),
+    dcc.Dropdown(
+        ticker_lst,
+        ['AAP'],
+        multi=True,
+                id = 'selected-company'
+                ),
+    dcc.DatePickerRange(
+        id='my-date-picker-range',
+        min_date_allowed=date(2019, 9, 10),
+        max_date_allowed=dt.datetime.today(),
+        initial_visible_month=date(2019, 9, 10),
+        end_date=dt.datetime.today()
+    ),
+    html.Button(
+        id='submit-button',
+        n_clicks=0,
+        children='Submit',
+        style={'fontSize':28}
+    ),
+
+    dcc.Graph(id = 'final-graph',
+              figure = {'data':[go.Scatter(
+                x= df.index,
+                y= df['Close'],
+                text='AAP',
+                mode='lines',
+            )],
+               'layout':go.Layout(
+                title = 'Stock Graph',
+                hovermode='closest'
+            )
+             })
+
+])
+@app.callback(
+    Output('final-graph', 'figure'),
+    [Input('submit-button', 'n_clicks')],
+    [State('selected-company', 'value'),
+     State('my-date-picker-range', 'start_date'),
+     State('my-date-picker-range', 'end_date')])
+
+def update_graph(n_clicks, value, start_date, end_date):
+   
+    start = dt.datetime.strptime(start_date[:10], '%Y-%m-%d')
+    end = dt.datetime.strptime(end_date[:10], '%Y-%m-%d')
+
+    data = []
+    for val in value:
+
+        df = web.DataReader(val, 'stooq', start=start, end=end)
+        trace = go.Scatter(
+                x= df.index,
+                y= df['Close'],
+                text=val,
+                mode='lines',
+                name = val
+            )
+        data.append(trace)
         
-        col1, col2 = st.columns(2)
-        with col1 : 
-            daily = st.button('Daily') 
+    fig =  {
+            'data': data,
+            'layout': go.Layout(
+                title = 'Stock Graph'
+            )
+        }
+    return fig
 
-        with col2 :  
-            monthly = st.button('Monthly')
-        
-        if monthly : 
-            st.plotly_chart(df.plot_expenses('month')[0])
-            # st.dataframe(df.plot_expenses('month')[2])
-            percent = df.plot_expenses('month')[1]
+from datetime import datetime
+datetime.strptime('2019-09-28'[:10], '%Y-%m-%d')
 
-            if percent > 0 : 
-                st.write('which is ',percent,'%',' higher than prev month')
-            else : 
-                st.write('which is ',abs(percent),'%',' lower than prev month')
+if __name__ == '__main__':
+    app.run_server()
 
-        else : 
-            st.plotly_chart(df.plot_expenses('date'))
-
-    elif sidebar_sub == 'Category' :
-        st.markdown(
-            """
-            ##### Category wise expenses 
-            """
-        ) 
-        st.plotly_chart(df.share_of_category())
-
-    elif sidebar_sub == 'boxplot' : 
-        st.markdown(
-            """
-            ##### Category wise boxplot 
-            """
-        ) 
-        col1, col2, col3 = st.columns(3)
-        with col1 : 
-            food = st.button('food') 
-
-        with col2 :  
-            travel = st.button('travel')
-        
-        with col3 :  
-            wants = st.button('wants')
-
-        if travel :
-            st.plotly_chart(df.plot_boxplot('travel'))
-        if wants :
-            st.plotly_chart(df.plot_boxplot('wants'))
-        else: 
-            st.plotly_chart(df.plot_boxplot('food'))
-
-    elif sidebar_sub == 'total expenses' : 
-        st.markdown(
-            """
-            ##### Total Expenses 
-            """
-        ) 
-        st.plotly_chart(df.total_spending()[0])
-        st.write('Total amount spent is ',df.total_spending()[1])
-
-    else : 
-        st.markdown(
-            """
-            ##### Spending on items 
-            """
-        ) 
-        st.plotly_chart(df.plot_treemap())
-
-elif sidebar_main == 'About the Project' : 
-    st.markdown(
-            md.aboutpage()
-        ) 
-
-else : 
-    # dropdown
-    col1, col2 = st.columns(2)
-    with col1 :
-        st.write('Max amount spent on food :')
-    with col2 :
-        check = st.button('check', key = 1)
-    
-    if check : 
-        st.write('I ate ', df.find_max('food')[0], ' on ', df.find_max('food')[2].date(), ' with ', df.find_max('food')[1])
-    
-    col1, col2 = st.columns(2)
-    with col1 :
-        st.write('Max amount spent on travel :')
-    with col2 :
-        check = st.button('check', key = 2)
-    
-    if check : 
-        st.write('I used ', df.find_max('travel')[0], ' on ', df.find_max('travel')[2].date(), ' for ', df.find_max('travel')[1])
-
-    col1, col2 = st.columns(2)
-    with col1 :
-        st.write('Max amount spent on wants :')
-    with col2 :
-        check = st.button('check', key = 3)
-    
-    if check : 
-        st.write('I have spent on ', df.find_max('wants')[0], ' on ', df.find_max('wants')[2].date(), ' for ', df.find_max('wants')[1])
-
-footer = md.footerSection()
-st.markdown(footer,unsafe_allow_html=True) 
